@@ -17,10 +17,6 @@ func init() {
 			DisableTimestamp: false,
 			TimestampFormat:  "2006-01-02 12:00:00",
 		})
-		level, err := log.ParseLevel("debug")
-		if err != nil {
-			level = log.InfoLevel
-		}
-		Logger.SetLevel(level)
+		Logger.SetLevel(log.TraceLevel)
 	})
 }

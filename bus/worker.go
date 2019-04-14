@@ -5,6 +5,7 @@ import (
 	"github.com/streadway/amqp"
 	"net"
 	"time"
+	"reflect"
 )
 
 const (
@@ -44,6 +45,7 @@ func publish(ch *amqp.Channel, queue string, contentType string, body []byte) er
 func worker(ctx context.Context, url string, tasks chan task, limit chan struct{}) {
 	var conn *amqp.Connection
 	var ch *amqp.Channel
+	logger.Debug("started bus worker")
 	defer func() {
 		if ch != nil {
 			ch.Close()
@@ -52,6 +54,7 @@ func worker(ctx context.Context, url string, tasks chan task, limit chan struct{
 			conn.Close()
 		}
 		limit <- struct{}{}
+		logger.Debug("closed bus worker")
 	}()
 	var err error
 	for {
@@ -62,6 +65,7 @@ func worker(ctx context.Context, url string, tasks chan task, limit chan struct{
 					if ch == nil {
 						conn, ch, err = connect(url)
 						if err != nil {
+							logger.Debug("err try", try)
 							continue
 						}
 					}
@@ -69,18 +73,22 @@ func worker(ctx context.Context, url string, tasks chan task, limit chan struct{
 					if err == nil {
 						break
 					}
+					conn = nil
+					ch = nil
+					logger.Debugf("%+v", reflect.TypeOf(err))
 					if _, ok := err.(*net.OpError); ok {
 						conn = nil
 						ch = nil
+						logger.Debug("err try", try)
 					}
 					time.Sleep(TryTimeout)
 				}
 				if err != nil {
-					logger.Errorf("failed publish in %s: %s", task.Queue, err.Error())
+					logger.Errorf("failed to publish in %s: %s", task.Queue, err.Error())
 					task.Failure()
 				} else {
-					logger.Tracef("published: %+v", task.Body)
 					task.Success()
+					logger.Debug("pub")
 				}
 			}
 		case <-time.After(IdleConnectionTimeout):
@@ -94,5 +102,4 @@ func worker(ctx context.Context, url string, tasks chan task, limit chan struct{
 			}
 		}
 	}
-	logger.Debug("closed bus worker")
 }

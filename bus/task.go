@@ -7,6 +7,15 @@ type task struct {
 	success     chan bool
 }
 
+func makeTask(queue string, contentType string, body []byte) task {
+	return task{
+		Queue: queue,
+		ContentType: contentType,
+		Body: body,
+		success: make(chan bool),
+	}
+}
+
 func (t *task) Success() {
 	t.success <- true
 }

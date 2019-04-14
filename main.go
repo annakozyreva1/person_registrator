@@ -1,72 +1,41 @@
 package main
 
 import (
-	"log"
-	"github.com/streadway/amqp"
-	"reflect"
+	"github.com/annakozyreva1/person_registrator/bus"
+	"github.com/annakozyreva1/person_registrator/log"
+	"sync"
+	"math/rand"
+	"sync/atomic"
 	"time"
-	"fmt"
-	"net"
 )
 
-func failOnError(err error, msg string) {
-	if err != nil {
-		log.Fatalf("%s: %s", msg, err)
-	}
-}
+var logger = log.Logger
 
 //"amqp://gpiicshf:Ja2mQPOi2Mz25K7dmJtwpZOGfu-WaH3v@gopher.rmq.cloudamqp.com/gpiicshf
 
 func main() {
-	conn, err := amqp.Dial("amqp://gpiicshf:Ja2mQPOi2Mz25K7dmJtwpZOGfu-WaH3v@gopher.rmq.cloudamqp.com/gpiicshf")
-	failOnError(err, "Failed to connect to RabbitMQ")
-	defer conn.Close()
-
-	ch, err := conn.Channel()
-	failOnError(err, "Failed to open a channel")
-	defer ch.Close()
-
-	/*q, err := ch.QueueDeclare(
-		"task_queue", // name
-		true,         // durable
-		false,        // delete when unused
-		false,        // exclusive
-		false,        // no-wait
-		nil,          // arguments
-	)*/
-	failOnError(err, "Failed to declare a queue")
-
-	body := "hello"
-	r := make(chan *amqp.Error)
-	ch.NotifyClose(r)
-	go func() {
-		select {
-		case rr :=<- r:
-			{
-				fmt.Printf("%v", rr)
-			}
-		}
-	}()
-	for {
-		err = ch.Publish(
-			"",     // exchange
-			"hjhj", // routing key
-			false,  // mandatory
-			false,
-			amqp.Publishing{
-				DeliveryMode: amqp.Persistent,
-				ContentType:  "text/plain",
-				Body:         []byte(body),
-			})
-		//failOnError(err, "Failed to publish a message")
-		if err != nil {
-			log.Printf(" [x] Sent %s %+v", body, reflect.TypeOf(err))
-			if _, ok := err.(*net.OpError); ok {
-
-			}
-		}
-
-		time.Sleep(time.Second)
+	b := bus.New("amqp://gpiicshf:Ja2mQPOi2Mz25K7dmJtwpZOGfu-WaH3v@gopher.rmq.cloudamqp.com/gpiicshf")
+	err := b.CreateQueue("test1", true, false)
+	if err != nil {
+		logger.Fatalf("failed to create queue: %s", err.Error())
 	}
-}
+	wg := sync.WaitGroup{}
+	wg.Add(50)
+	cnt := int32(0)
 
+	rand.Seed(time.Now().Unix())
+	for i := 0; i < 50; i++ {
+		go func() {
+			time.Sleep(time.Second*time.Duration(rand.Intn(150)))
+			isPublished := b.Publish("test1", "text/plain", []byte("hi"))
+			if isPublished {
+
+				atomic.AddInt32(&cnt, 1)
+			}
+			wg.Done()
+		}()
+	}
+	wg.Wait()
+	logger.Tracef("published: %d", cnt)
+	b.Close()
+}

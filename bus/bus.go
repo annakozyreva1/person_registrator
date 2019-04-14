@@ -6,17 +6,22 @@ import (
 	"context"
 )
 
-const (
-	MaxConnCount = 10
-)
-
 var (
 	logger = log.Logger
 )
 
-func NewBus()*bus {
-	return &bus{
+const (
+	MaxConnections = 10
+)
 
+func New(url string) *bus {
+	ctx, cancel := context.WithCancel(context.Background())
+	return &bus{
+		url: url,
+		tasks: make(chan task),
+		limit: make(chan struct{}, MaxConnections),
+		ctx: ctx,
+		cancel: cancel,
 	}
 }
 
@@ -57,8 +62,8 @@ func (b *bus) addWorkerIsPossible(task task) bool {
 	select {
 	case b.limit <- struct{}{}:
 		{
-			b.tasks <- task
 			go worker(b.ctx, b.url, b.tasks, b.limit)
+			b.tasks <- task
 		}
 	default:
 		{
@@ -69,11 +74,7 @@ func (b *bus) addWorkerIsPossible(task task) bool {
 }
 
 func (b *bus) Publish(queue string, contentType string, body []byte) bool {
-	task := task{
-		Queue:       queue,
-		ContentType: contentType,
-		Body:        body,
-	}
+	task := makeTask(queue, contentType, body)
 	select {
 	case b.tasks <- task:
 		{
@@ -82,6 +83,7 @@ func (b *bus) Publish(queue string, contentType string, body []byte) bool {
 		{
 			if !b.addWorkerIsPossible(task) {
 				logger.Warning("exceed bus connections limit")
+				return false
 			}
 		}
 	}
