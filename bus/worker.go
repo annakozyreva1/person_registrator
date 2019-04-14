@@ -3,9 +3,7 @@ package bus
 import (
 	"context"
 	"github.com/streadway/amqp"
-	"net"
 	"time"
-	"reflect"
 )
 
 const (
@@ -14,19 +12,24 @@ const (
 	IdleConnectionTimeout = time.Minute
 )
 
-func connect(url string) (*amqp.Connection, *amqp.Channel, error) {
+func connect(url string) (*amqp.Connection, *amqp.Channel,  chan amqp.Confirmation, chan *amqp.Error, error) {
 	var conn *amqp.Connection
 	var err error
 	conn, err = amqp.Dial(url)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 	ch, err := conn.Channel()
 	if err != nil {
 		conn.Close()
-		return nil, nil, err
+		return nil, nil, nil, nil,  err
 	}
-	return conn, ch, nil
+	ch.Confirm(false)
+	conf := make(chan amqp.Confirmation)
+	ch.NotifyPublish(conf)
+	 cl := make(chan *amqp.Error)
+	ch.NotifyClose(cl)
+	return conn, ch, conf, cl, nil
 }
 
 func publish(ch *amqp.Channel, queue string, contentType string, body []byte) error {
@@ -43,16 +46,10 @@ func publish(ch *amqp.Channel, queue string, contentType string, body []byte) er
 }
 
 func worker(ctx context.Context, url string, tasks chan task, limit chan struct{}) {
-	var conn *amqp.Connection
-	var ch *amqp.Channel
 	logger.Debug("started bus worker")
+	pub := newPublisher(url)
 	defer func() {
-		if ch != nil {
-			ch.Close()
-		}
-		if conn != nil {
-			conn.Close()
-		}
+		pub.Close()
 		limit <- struct{}{}
 		logger.Debug("closed bus worker")
 	}()
@@ -62,24 +59,9 @@ func worker(ctx context.Context, url string, tasks chan task, limit chan struct{
 		case task := <-tasks:
 			{
 				for try := 1; try <= MaxPublishTries; try++ {
-					if ch == nil {
-						conn, ch, err = connect(url)
-						if err != nil {
-							logger.Debug("err try", try)
-							continue
-						}
-					}
-					err = publish(ch, task.Queue, task.ContentType, task.Body)
+					err = pub.Publish(task.Queue, task.ContentType, task.Body)
 					if err == nil {
 						break
-					}
-					conn = nil
-					ch = nil
-					logger.Debugf("%+v", reflect.TypeOf(err))
-					if _, ok := err.(*net.OpError); ok {
-						conn = nil
-						ch = nil
-						logger.Debug("err try", try)
 					}
 					time.Sleep(TryTimeout)
 				}
@@ -88,7 +70,6 @@ func worker(ctx context.Context, url string, tasks chan task, limit chan struct{
 					task.Failure()
 				} else {
 					task.Success()
-					logger.Debug("pub")
 				}
 			}
 		case <-time.After(IdleConnectionTimeout):

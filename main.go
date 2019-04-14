@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"sync/atomic"
 	"time"
+	"github.com/annakozyreva1/person_registrator/web"
 )
 
 var logger = log.Logger
@@ -24,6 +25,7 @@ func main() {
 	cnt := int32(0)
 
 	rand.Seed(time.Now().Unix())
+	go web.Run()
 	for i := 0; i < 50; i++ {
 		go func() {
 			time.Sleep(time.Second*time.Duration(rand.Intn(150)))
@@ -31,6 +33,7 @@ func main() {
 			if isPublished {
 
 				atomic.AddInt32(&cnt, 1)
+				logger.Trace("pub")
 			}
 			wg.Done()
 		}()
