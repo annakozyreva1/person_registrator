@@ -9,10 +9,10 @@ type task struct {
 
 func makeTask(queue string, contentType string, body []byte) task {
 	return task{
-		Queue: queue,
+		Queue:       queue,
 		ContentType: contentType,
-		Body: body,
-		success: make(chan bool),
+		Body:        body,
+		success:     make(chan bool),
 	}
 }
 

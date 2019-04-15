@@ -1,23 +1,23 @@
 package bus
 
 import (
-	"github.com/streadway/amqp"
 	"errors"
+	"github.com/streadway/amqp"
 )
 
 func newPublisher(url string) *publisher {
 	return &publisher{
-		url: url,
+		url:    url,
 		closed: make(chan *amqp.Error, 1),
 	}
 }
 
 type publisher struct {
-	url string
-	conn *amqp.Connection
-	ch *amqp.Channel
+	url       string
+	conn      *amqp.Connection
+	ch        *amqp.Channel
 	confirmed chan amqp.Confirmation
-	closed chan *amqp.Error
+	closed    chan *amqp.Error
 }
 
 func (p *publisher) connect() error {
@@ -53,7 +53,7 @@ func (p *publisher) Close() {
 
 func (p *publisher) isClosed() bool {
 	select {
-	case <- p.closed:
+	case <-p.closed:
 		{
 			p.Close()
 			return true
@@ -68,7 +68,7 @@ func (p *publisher) isClosed() bool {
 
 func (p *publisher) Publish(queue string, contentType string, body []byte) error {
 	if p.ch == nil || p.isClosed() {
-		if err := p.connect(); err != nil  {
+		if err := p.connect(); err != nil {
 			return err
 		}
 	}
@@ -83,7 +83,7 @@ func (p *publisher) Publish(queue string, contentType string, body []byte) error
 			Body:         body,
 		})
 	if err == nil {
-		c := <- p.confirmed
+		c := <-p.confirmed
 		if c.Ack {
 			return nil
 		}

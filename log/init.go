@@ -1,8 +1,8 @@
 package log
 
 import (
-	"sync"
 	log "github.com/sirupsen/logrus"
+	"sync"
 )
 
 var (

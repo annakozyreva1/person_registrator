@@ -1,9 +1,9 @@
 package bus
 
 import (
+	"context"
 	"github.com/annakozyreva1/person_registrator/log"
 	"github.com/streadway/amqp"
-	"context"
 )
 
 var (
@@ -14,26 +14,26 @@ const (
 	MaxConnections = 10
 )
 
-func New(url string) *bus {
+func New(url string) *Bus {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &bus{
-		url: url,
-		tasks: make(chan task),
-		limit: make(chan struct{}, MaxConnections),
-		ctx: ctx,
+	return &Bus{
+		url:    url,
+		tasks:  make(chan task),
+		limit:  make(chan struct{}, MaxConnections),
+		ctx:    ctx,
 		cancel: cancel,
 	}
 }
 
-type bus struct {
-	url   string
-	tasks chan task
-	limit chan struct{}
-	ctx context.Context
+type Bus struct {
+	url    string
+	tasks  chan task
+	limit  chan struct{}
+	ctx    context.Context
 	cancel context.CancelFunc
 }
 
-func (b *bus) CreateQueue(name string, durable bool, autoDelete bool) error {
+func (b *Bus) CreateQueue(name string, durable bool, autoDelete bool) error {
 	conn, err := amqp.Dial(b.url)
 	if err != nil {
 		return err
@@ -58,7 +58,7 @@ func (b *bus) CreateQueue(name string, durable bool, autoDelete bool) error {
 	return nil
 }
 
-func (b *bus) addWorkerIsPossible(task task) bool {
+func (b *Bus) addWorkerIsPossible(task task) bool {
 	select {
 	case b.limit <- struct{}{}:
 		{
@@ -73,7 +73,7 @@ func (b *bus) addWorkerIsPossible(task task) bool {
 	return true
 }
 
-func (b *bus) Publish(queue string, contentType string, body []byte) bool {
+func (b *Bus) Publish(queue string, contentType string, body []byte) bool {
 	task := makeTask(queue, contentType, body)
 	select {
 	case b.tasks <- task:
@@ -90,6 +90,6 @@ func (b *bus) Publish(queue string, contentType string, body []byte) bool {
 	return task.IsSuccess()
 }
 
-func (b *bus) Close() {
+func (b *Bus) Close() {
 	b.cancel()
 }
